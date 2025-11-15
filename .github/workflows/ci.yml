@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  basic-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # здесь в будущем можно будет добавить:
+      # - установку Python
+      # - установку зависимостей
+      # - запуск тестов
+      # пока просто заглушка
+      - name: Dummy step
+        run: echo "CI is alive ✅"
