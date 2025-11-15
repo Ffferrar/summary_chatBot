@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# venv / poetry
+.venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# __pycache__ in src/tests
+src/**/__pycache__/
+tests/**/__pycache__/
+
+# Migrations cache
+alembic.ini.bak
+
+# Docker
+*.log
