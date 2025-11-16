@@ -1,17 +1,36 @@
-# docker-compose для разработки
-# Здесь будет описано:
-# - сервис postgres (с pgvector)
-# - сервис приложения (бот)
-# В будущем можно добавить сервис для RAG, если он будет в том же compose.
-
 version: "3.9"
 
 services:
   db:
     image: postgres:16
-    # TODO: добавить переменные окружения, volume, healthcheck и т.п.
-    #       + включить расширение pgvector через init-скрипт
+    container_name: tg_rag_bot_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tg_rag_bot
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   app:
     build: .
-    # TODO: настроить зависимости от db, env-файлы и команду запуска бота
+    container_name: tg_rag_bot_app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      API_ID: ${API_ID}
+      API_HASH: ${API_HASH}
+      BOT_TOKEN: ${BOT_TOKEN}
+      DATABASE_URL: postgres://postgres:postgres@db:5432/tg_rag_bot
+    volumes:
+      - ./src:/app/src
+    command: ["python", "src/main.py"]
+    restart: always
+
+volumes:
+  db_data:

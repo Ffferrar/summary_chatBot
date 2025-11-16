@@ -10,6 +10,7 @@ package-mode = true
 
 [tool.poetry.dependencies]
 python = "^3.12"
+telethon = "^1.30.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

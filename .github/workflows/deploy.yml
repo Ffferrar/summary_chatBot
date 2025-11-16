@@ -1,7 +1,6 @@
 name: Deploy to server (manual)
 
 on:
-  # запускаем ТОЛЬКО вручную из интерфейса GitHub Actions
   workflow_dispatch:
 
 jobs:
@@ -12,18 +11,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Поднимаем ssh-agent и добавляем приватный ключ из секретов
       - name: Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      # Опционально: убедиться, что known_hosts не мешает
       - name: Add server to known_hosts
         run: |
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      # Скелет деплоя: подключаемся по SSH и выполняем команды
       - name: Deploy via SSH
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
@@ -31,18 +27,24 @@ jobs:
 
             echo "Connected to server"
 
-            # Путь до проекта на сервере — поменяй под свою структуру
-            cd /opt/tg-rag-bot
+            PROJECT_DIR="/opt/tg-rag-bot"
+
+            if [ ! -d "$PROJECT_DIR" ]; then
+              echo "Project directory does not exist. Creating..."
+              mkdir -p $PROJECT_DIR
+            fi
+
+            cd $PROJECT_DIR
 
             echo "Pulling latest code from main..."
             git pull origin main
 
-            # Ниже — докерные команды пока закомментированы.
-            # Когда будешь готов всё включить — убери решётки.
+            echo "Updating .env file..."
+            echo "${{ secrets.ENV_FILE_CONTENT }}" > .env
 
-            # echo "Building and restarting containers..."
-            # docker compose pull
-            # docker compose up -d --build
+            echo "Building and restarting containers..."
+            docker compose pull
+            docker compose up -d --build
 
-            echo "Deployment script finished (без докер-перезапуска)."
+            echo "Deployment script finished."
           EOF
