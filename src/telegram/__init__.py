@@ -6,9 +6,9 @@ TODO: создание подключения к БД.
 
 from telethon import TelegramClient
 import logging
-from logging_config import setup_logging
-from handlers import register_handlers
-from config import API_ID, API_HASH, BOT_TOKEN
+from .logging_config import setup_logging
+from .handlers import register_handlers
+from .config import API_ID, API_HASH, BOT_TOKEN
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 logger.info("Telegram бот успешно запущен.")
 
-register_handlers(client)
+# Expose register_handlers; main will call with qa_service
 
 if __name__ == '__main__':
     try:
