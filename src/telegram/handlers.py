@@ -47,23 +47,24 @@ def register_handlers(client, qa_service: QAService):
                     text=event.raw_text or message_text,
                 )
 
-            # Ask placeholder RAG/LLM and persist answer
-            answer_text, question_id, _ = await qa_service.ask_with_placeholder(
-                question_text=message_text,
-                asked_by_user_id=sender_id,
-                chat_id=chat_id,
-                current_message_id=msg.id,
-            )
-
-            reply_text = f"question #{question_id}: {answer_text}"
-            await event.reply(reply_text)
+            # Use RAG/LLM for answer
+            try:
+                answer_text, question_id, _ = await qa_service.ask_with_rag_llm(
+                    question_text=message_text,
+                    asked_by_user_id=sender_id,
+                    chat_id=chat_id,
+                    current_message_id=msg.id,
+                )
+                reply_text = f"question #{question_id}: {answer_text}"
+                await event.reply(reply_text)
+            except Exception as e:
+                logger.exception("RAG/LLM error in handle_ask_question")
+                await event.reply("Произошла ошибка при генерации ответа через LLM. Попробуйте позже.")
         except Exception:
-            logger.exception("Unhandled exception on handle_ask_question")
-            # Don't let exceptions bubble and crash Telethon's loops; inform user minimally
+            logger.exception("Unhandled exception on handle_ask_question (outer)")
             try:
                 await event.reply("Произошла ошибка при обработке запроса. Попробуйте позже.")
             except Exception:
-                # suppress any reply errors
                 logger.debug("Failed to send error reply to user")
 
     # show pattern like `/show #3 base messages` or `\show 3`

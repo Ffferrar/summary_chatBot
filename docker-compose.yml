@@ -32,6 +32,19 @@ services:
     ports:
       - "8000:8000" # reserved if we add HTTP later
 
+  qdrant:
+    image: qdrant/qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/collections"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 networks:
   default:
     name: summary_chatbot_net

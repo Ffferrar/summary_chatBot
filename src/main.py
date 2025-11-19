@@ -42,9 +42,23 @@ async def async_main():
     # Telethon
     client = TelegramClient("bot", int(API_ID), API_HASH)
 
-    qa_service = QAService(session_factory)
-    # Register handlers before starting the client so they are attached immediately
+
+    mistral_api_key = os.environ.get("MISTRAL_API_KEY")
+    qa_service = QAService(session_factory, mistral_api_key=mistral_api_key)
     register_handlers(client, qa_service)
+
+    async def periodic_bm25_update():
+        while True:
+            try:
+                logger.info("[BM25] Recalculating BM25 index...")
+                qa_service.rag.recalculate_bm25()
+                logger.info("[BM25] BM25 index updated.")
+            except Exception:
+                logger.exception("[BM25] Error during BM25 update")
+            await asyncio.sleep(600)  # 10 minutes
+
+    # Start periodic BM25 update in background
+    asyncio.create_task(periodic_bm25_update())
 
     await client.start(bot_token=BOT_TOKEN)
     logger.info("Бот запущен и ожидает сообщения…")

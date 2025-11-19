@@ -8,12 +8,22 @@ from src.db import Base
 from src.db.models import Message, Answer, answer_base_messages
 
 
+from src.rag.telegram_rag import TelegramRAGSystem
+import os
+
 class QAService:
-    def __init__(self, session_factory):
+    def __init__(self, session_factory, rag_system: TelegramRAGSystem = None, mistral_api_key: str = None):
         """
         session_factory: async sessionmaker instance (e.g. sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False))
+        rag_system: instance of TelegramRAGSystem (optional, will be created if not provided)
+        mistral_api_key: API key for Mistral LLM (optional, can be set via env MISTRAL_API_KEY)
         """
         self._session_factory = session_factory
+        if rag_system is not None:
+            self.rag = rag_system
+        else:
+            api_key = mistral_api_key or os.environ.get("MISTRAL_API_KEY")
+            self.rag = TelegramRAGSystem(mistral_api_key=api_key)
 
     async def record_message(
         self,
@@ -46,11 +56,25 @@ class QAService:
                 )
                 existing_msg = existing.scalar_one_or_none()
                 if existing_msg:
+                    # Also log to Qdrant if not already present
+                    self._log_to_qdrant(existing_msg)
                     return existing_msg
                 # Re-raise if it's an unexpected error
                 raise
             await session.refresh(msg)
+            # Log to Qdrant/BM25
+            self._log_to_qdrant(msg)
             return msg
+
+    def _log_to_qdrant(self, msg: Message):
+        # Add message to Qdrant/BM25 index
+        doc = {
+            "id": msg.id,
+            "text": msg.text,
+            "user_id": str(msg.tg_user_id),
+            "timestamp": msg.timestamp.timestamp() if hasattr(msg.timestamp, 'timestamp') else float(msg.timestamp),
+        }
+        self.rag.add_documents([doc])
 
     async def create_answer(
         self,
@@ -93,6 +117,41 @@ class QAService:
             res = await session.execute(stmt)
             return list(res.scalars().all())
 
+
+    async def ask_with_rag_llm(
+        self,
+        *,
+        question_text: str,
+        asked_by_user_id: int,
+        chat_id: int,
+        top_k: int = 5,
+        current_message_id: int = None,
+        mistral_api_key: str = None,
+    ) -> Tuple[str, int, list[int]]:
+        """
+        Perform RAG search and LLM answer generation. Returns (answer_text, answer_id, base_message_ids).
+        """
+        # Search for relevant messages in Qdrant/BM25
+        results = self.rag.search(question_text, k=top_k)
+        doc_ids = [doc_id for doc_id, _ in results]
+        # Get texts for those messages
+        doc_texts = self.rag.get_document_texts(doc_ids)
+        # Format for LLM
+        messages = [(doc_id, text) for doc_id, text in doc_texts]
+        # Call LLM
+        answer_text = self.rag.run_mistral(question_text, messages, api_key=mistral_api_key)
+        # Map doc_ids to Message DB ids (they are DB ids)
+        base_message_ids = [int(doc_id) for doc_id, _ in doc_texts if str(doc_id).isdigit()]
+        # Save answer
+        ans = await self.create_answer(
+            question_text=question_text,
+            answer_text=answer_text,
+            asked_by_user_id=asked_by_user_id,
+            chat_id=chat_id,
+            base_message_ids=base_message_ids,
+        )
+        return answer_text, ans.id, base_message_ids
+
     async def ask_with_placeholder(
         self,
         *,
@@ -102,19 +161,14 @@ class QAService:
         current_message_id: int,
     ) -> Tuple[str, int, list[int]]:
         """
-        Placeholder for RAG/LLM: returns a dummy answer and uses the current message as the only base message.
-        Returns (answer_text, answer_id, base_message_ids).
+        Calls ask_with_rag_llm for real RAG/LLM answer. Returns (answer_text, answer_id, base_message_ids).
         """
-        answer_text = "here is the link (placeholder)"
-        base_message_ids = [current_message_id]
-        ans = await self.create_answer(
+        return await self.ask_with_rag_llm(
             question_text=question_text,
-            answer_text=answer_text,
             asked_by_user_id=asked_by_user_id,
             chat_id=chat_id,
-            base_message_ids=base_message_ids,
+            current_message_id=current_message_id,
         )
-        return answer_text, ans.id, base_message_ids
 
     async def get_message_by_tg_id(self, chat_id: int, tg_message_id: int) -> Message | None:
         async with self._session_factory() as session:
