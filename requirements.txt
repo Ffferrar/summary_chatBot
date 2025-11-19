@@ -1,0 +1,13 @@
+telethon>=1.33,<2
+SQLAlchemy>=2.0,<3
+asyncpg>=0.29
+alembic>=1.12,<2
+psycopg2-binary>=2.9
+pydantic>=2.5,<3
+python-dotenv>=1.0
+numpy
+sentence-transformers
+qdrant-client
+rank-bm25
+nltk
+mistralai
