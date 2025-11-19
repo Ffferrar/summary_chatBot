@@ -41,13 +41,18 @@ async def async_main():
 
     # Telethon
     client = TelegramClient("bot", int(API_ID), API_HASH)
-    await client.start(bot_token=BOT_TOKEN)
 
     qa_service = QAService(session_factory)
+    # Register handlers before starting the client so they are attached immediately
     register_handlers(client, qa_service)
 
+    await client.start(bot_token=BOT_TOKEN)
     logger.info("Бот запущен и ожидает сообщения…")
-    await client.run_until_disconnected()
+    try:
+        await client.run_until_disconnected()
+    except Exception:
+        logger.exception("Bot crashed during run_until_disconnected")
+        raise
 
 
 def main():

@@ -33,7 +33,22 @@ class QAService:
                 text=text,
             )
             session.add(msg)
-            await session.commit()
+            try:
+                await session.commit()
+            except Exception:
+                # If commit fails (e.g. concurrent insert / integrity error), rollback and try to fetch existing
+                await session.rollback()
+                existing = await session.execute(
+                    select(Message).where(
+                        Message.chat_id == chat_id,
+                        Message.tg_message_id == tg_message_id,
+                    )
+                )
+                existing_msg = existing.scalar_one_or_none()
+                if existing_msg:
+                    return existing_msg
+                # Re-raise if it's an unexpected error
+                raise
             await session.refresh(msg)
             return msg
 
@@ -100,3 +115,12 @@ class QAService:
             base_message_ids=base_message_ids,
         )
         return answer_text, ans.id, base_message_ids
+
+    async def get_message_by_tg_id(self, chat_id: int, tg_message_id: int) -> Message | None:
+        async with self._session_factory() as session:
+            stmt = select(Message).where(
+                Message.chat_id == chat_id,
+                Message.tg_message_id == tg_message_id,
+            )
+            res = await session.execute(stmt)
+            return res.scalar_one_or_none()
