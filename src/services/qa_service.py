@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Optional
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy import select
 
@@ -33,6 +33,7 @@ class QAService:
         chat_id: int,
         timestamp,
         text: str,
+        username: Optional[str] = None,
     ) -> Message:
         async with self._session_factory() as session:
             msg = Message(
@@ -57,22 +58,23 @@ class QAService:
                 existing_msg = existing.scalar_one_or_none()
                 if existing_msg:
                     # Also log to Qdrant if not already present
-                    self._log_to_qdrant(existing_msg)
+                    self._log_to_qdrant(existing_msg, username=username)
                     return existing_msg
                 # Re-raise if it's an unexpected error
                 raise
             await session.refresh(msg)
             # Log to Qdrant/BM25
-            self._log_to_qdrant(msg)
+            self._log_to_qdrant(msg, username=username)
             return msg
 
-    def _log_to_qdrant(self, msg: Message):
+    def _log_to_qdrant(self, msg: Message, username: Optional[str] = None):
         # Add message to Qdrant/BM25 index
         doc = {
             "id": msg.id,
             "text": msg.text,
             "user_id": str(msg.tg_user_id),
             "timestamp": msg.timestamp.timestamp() if hasattr(msg.timestamp, 'timestamp') else float(msg.timestamp),
+            "username": username,
         }
         self.rag.add_documents([doc])
 
@@ -176,5 +178,11 @@ class QAService:
                 Message.chat_id == chat_id,
                 Message.tg_message_id == tg_message_id,
             )
+            res = await session.execute(stmt)
+            return res.scalar_one_or_none()
+
+    async def get_answer_by_id(self, answer_id: int) -> Answer | None:
+        async with self._session_factory() as session:
+            stmt = select(Answer).where(Answer.id == answer_id)
             res = await session.execute(stmt)
             return res.scalar_one_or_none()

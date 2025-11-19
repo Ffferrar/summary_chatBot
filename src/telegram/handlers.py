@@ -85,10 +85,23 @@ def register_handlers(client, qa_service: QAService):
             await event.reply("Базовые сообщения не найдены для указанного вопроса.")
             return
 
-        await event.reply(f"Пересылаю базовые сообщения для #{question_id}…")
+        # Try to fetch the original question text for context
         try:
+            ans = await qa_service.get_answer_by_id(question_id)
+            question_text = getattr(ans, 'question_text', None)
+        except Exception:
+            question_text = None
+
+        intro = f"Пересылаю базовые сообщения для #{question_id}…"
+        if question_text:
+            intro += f"\nВопрос: {question_text}"
+
+        await event.reply(intro)
+        try:
+            # forward original messages from the source chat so they appear as from authors
             tg_ids = [m.tg_message_id for m in base_msgs]
-            await event.client.forward_messages(event.chat_id, tg_ids)
+            # forward from the same chat (source) into current chat
+            await event.client.forward_messages(event.chat_id, tg_ids, from_peer=event.chat_id)
         except Exception:
             # Fallback to plaintext resend
             for m in base_msgs:
@@ -127,8 +140,26 @@ def register_handlers(client, qa_service: QAService):
                 # если вдруг захочешь писать ещё и лички с ботом — просто убери этот return
                 return
 
-            text = event.raw_text or ""
+            text = (event.raw_text or "").strip()
+
+            # 3) skip commands (don't index bot commands)
+            if not text:
+                return
+            if text.startswith("/") or text.startswith("\\"):
+                return
+
             sender_id = _extract_author_id(event)
+            # try to get a display name / username for prompt context
+            try:
+                sender = await event.get_sender()
+                if getattr(sender, 'username', None):
+                    sender_name = sender.username
+                else:
+                    first = getattr(sender, 'first_name', '') or ''
+                    last = getattr(sender, 'last_name', '') or ''
+                    sender_name = (first + ' ' + last).strip() or str(sender_id)
+            except Exception:
+                sender_name = str(sender_id)
 
             logger.info(
                 "Captured message from %s in chat %s: %s",
@@ -143,6 +174,7 @@ def register_handlers(client, qa_service: QAService):
                 chat_id=event.chat_id,
                 timestamp=event.message.date or datetime.datetime.utcnow(),
                 text=text,
+                username=sender_name,
             )
         except Exception:
             logger.exception("capture_all_messages error")
